@@ -5,6 +5,7 @@ import { resizeCanvas, setupCanvas, setupKeyboard, saveState } from './canvas.js
 import { setupColors, setupTools, setupSuggestions } from './colors.js';
 import { setupGenerate } from './generate.js';
 import { setupApiKey } from './setup.js';
+import { initChatUI } from './chat.js';
 
 function init() {
   const canvas = document.getElementById('drawing-canvas');
@@ -22,6 +23,7 @@ function init() {
   setupGenerate();
   setupKeyboard();
   setupSuggestions();
+  initChatUI();
 
   saveState();
 }

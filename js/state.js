@@ -58,3 +58,14 @@ export function setLastGeneratedPrompt(p) { lastGeneratedPrompt = p; }
 
 export function getVeoAbort() { return veoAbort; }
 export function setVeoAbort(a) { veoAbort = a; }
+
+// Chat state: array of {role: 'ai'|'user', type: 'text'|'image'|'video'|'buttons', content: ...}
+let chatMessages = [];
+let chatSubject = '';
+
+export function getChatMessages() { return chatMessages; }
+export function addChatMessage(msg) { chatMessages.push(msg); }
+export function clearChat() { chatMessages = []; chatSubject = ''; }
+
+export function getChatSubject() { return chatSubject; }
+export function setChatSubject(s) { chatSubject = s; }

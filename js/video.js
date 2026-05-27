@@ -27,6 +27,8 @@ export function resetVideoUI() {
   resultVideo.src = '';
 }
 
+let onVideoReady = null;
+
 function showGeneratedVideo(b64) {
   const resultImg = document.getElementById('result-image');
   const resultVideo = document.getElementById('result-video');
@@ -44,6 +46,7 @@ function showGeneratedVideo(b64) {
   videoBtn.style.display = '';
 
   setVideoStatus('Video ready!', 'done');
+  if (onVideoReady) { onVideoReady(url); onVideoReady = null; }
 }
 
 async function pollVeoOperation(opName, key, controller) {
@@ -108,9 +111,11 @@ async function pollVeoOperation(opName, key, controller) {
   setVideoStatus('Video generation timed out', 'error');
 }
 
-export async function startVeoGeneration(prompt, imgEl) {
+export async function startVeoGeneration(prompt, imgEl, chatCallback) {
   const key = getApiKey();
   if (!key) return;
+
+  if (chatCallback) onVideoReady = chatCallback;
 
   if (getVeoAbort()) { getVeoAbort().abort(); setVeoAbort(null); }
 

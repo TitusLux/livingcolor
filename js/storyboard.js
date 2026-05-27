@@ -8,6 +8,9 @@ import { getCanvasBase64 } from './canvas.js';
 import { startMagicEffect } from './particles.js';
 
 let storyboardAnim = null;
+let ltxVideoCallback = null;
+
+export function setLtxVideoCallback(fn) { ltxVideoCallback = fn; }
 
 export function setVideoStatus(msg, state) {
   const el = document.getElementById('video-status');
@@ -58,6 +61,7 @@ function showVideo(blobUrl) {
   resultVideo.style.display = '';
   resultImg.style.display = 'none';
   document.getElementById('download-video-btn').style.display = '';
+  if (ltxVideoCallback) { ltxVideoCallback(blobUrl); ltxVideoCallback = null; }
 }
 
 async function generateLtxVideo(prompt, imageBase64, mode) {

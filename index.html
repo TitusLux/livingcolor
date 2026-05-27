@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>LivingColor — Draw It, Live It</title>
+  <title>LivingColor — Draw It, Watch It Come Alive!</title>
   <link rel="stylesheet" href="style.css">
   <script type="module" src="https://cdn.jsdelivr.net/npm/@gradio/client/dist/index.min.js"></script>
 </head>
@@ -27,7 +27,7 @@
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
       </button>
     </div>
-    <p class="tagline">Draw something, then watch AI bring it to life</p>
+    <p class="tagline">Draw something magical, then show your AI friend!</p>
   </header>
 
   <main>
@@ -83,16 +83,18 @@
         </div>
       </div>
 
-      <div class="result-panel" id="result-panel">
-        <div class="result-placeholder" id="result-placeholder">
-          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><rect x="2" y="2" width="20" height="20" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
-          <p>Your AI creation will appear here</p>
+      <div class="result-panel chat-panel" id="result-panel">
+        <div class="chat-placeholder" id="chat-placeholder">
+          <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          <p>Draw something, then click<br><strong>Show My Friend!</strong></p>
         </div>
-        <div class="morph-container" id="morph-container" style="display:none">
-          <img id="result-image" alt="AI generated image" referrerpolicy="no-referrer">
-          <video id="result-video" autoplay loop muted playsinline style="display:none"></video>
-          <canvas id="sketch-overlay"></canvas>
-        </div>
+        <div class="chat-messages" id="chat-messages"></div>
+        <div class="chat-buttons" id="chat-buttons" style="display:none"></div>
+        <!-- Hidden elements for video/image download compatibility -->
+        <img id="result-image" style="display:none" alt="AI generated image" referrerpolicy="no-referrer">
+        <video id="result-video" autoplay loop muted playsinline style="display:none"></video>
+        <canvas id="sketch-overlay" style="display:none"></canvas>
+        <div class="morph-container" id="morph-container" style="display:none"></div>
         <div class="video-status" id="video-status" style="display:none">
           <span class="spinner"></span>
           <span id="video-status-text">Generating video...</span>
@@ -109,19 +111,19 @@
       <div class="prompt-row">
         <input type="text" id="style-prompt" placeholder="Optional style hint — e.g. &quot;watercolor&quot;, &quot;pixel art&quot;, &quot;3D render&quot;, &quot;oil painting&quot;" />
         <button id="generate-btn" class="generate-btn">
-          <span class="btn-text">Bring to Life</span>
+          <span class="btn-text">Show My Friend! 🌟</span>
           <span class="btn-loading" style="display:none">
             <span class="spinner"></span>
-            Generating...
+            Thinking...
           </span>
         </button>
       </div>
       <div class="mode-toggle">
-        <label class="toggle-label" title="Reimagine: AI creates a cinematic interpretation. Faithful: animates your actual drawing.">
-          <span class="toggle-text">Reimagine</span>
+        <label class="toggle-label" title="Magic: AI reimagines your drawing. My Drawing: keeps your style.">
+          <span class="toggle-text">Magic ✨</span>
           <input type="checkbox" id="animation-mode">
           <span class="toggle-slider"></span>
-          <span class="toggle-text">Faithful</span>
+          <span class="toggle-text">My Drawing 🖍️</span>
         </label>
       </div>
       <div class="suggestions">
