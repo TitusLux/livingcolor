@@ -232,7 +232,7 @@ function closestColorName(r, g, b) {
 
 function buildPrompt(description) {
   const colors = analyzeCanvasColors();
-  let prompt = description;
+  let prompt = description || 'an artistic scene';
   if (colors.length > 0) {
     prompt += ', featuring ' + colors.join(' and ') + ' tones';
   }
@@ -242,11 +242,6 @@ function buildPrompt(description) {
 
 async function generate() {
   const description = document.getElementById('style-prompt').value.trim();
-  if (!description) {
-    setStatus('Please describe what you drew — e.g. "a cat on a roof" or "sunset over mountains"', true);
-    document.getElementById('style-prompt').focus();
-    return;
-  }
 
   setLoading(true);
   setStatus('Generating your image...');

@@ -61,7 +61,7 @@
           <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><rect x="2" y="2" width="20" height="20" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
           <p>Your AI creation will appear here</p>
         </div>
-        <img id="result-image" alt="AI generated image" style="display:none">
+        <img id="result-image" alt="AI generated image" referrerpolicy="no-referrer" style="display:none">
         <div class="result-actions" id="result-actions" style="display:none">
           <button id="download-btn" class="action-btn">Download</button>
           <button id="retry-btn" class="action-btn secondary">Regenerate</button>
@@ -71,7 +71,7 @@
 
     <div class="generate-section">
       <div class="prompt-row">
-        <input type="text" id="style-prompt" placeholder="Describe what you drew — e.g. &quot;a cat on a rooftop at sunset&quot; or &quot;dragon in a forest, watercolor style&quot;" />
+        <input type="text" id="style-prompt" placeholder="Optional: describe your drawing — e.g. &quot;a cat on a rooftop at sunset&quot; or &quot;dragon, watercolor style&quot;" />
         <button id="generate-btn" class="generate-btn">
           <span class="btn-text">Bring to Life</span>
           <span class="btn-loading" style="display:none">
@@ -80,7 +80,7 @@
           </span>
         </button>
       </div>
-      <p class="hint">Draw your idea above, then describe it here. AI will turn your vision into a polished image.</p>
+      <p class="hint">Draw your idea above, then optionally describe it. Adding a description gives better results.</p>
       <p class="status" id="status"></p>
     </div>
   </main>
