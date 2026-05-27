@@ -7,7 +7,8 @@ import urllib.request
 import urllib.error
 from flask import Flask, request, jsonify, send_from_directory
 
-app = Flask(__name__, static_folder='..', static_url_path='')
+STATIC_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+app = Flask(__name__, static_folder=STATIC_DIR, static_url_path='')
 
 GEMINI_KEY = os.environ.get('GEMINI_API_KEY', 'AIzaSyDpNKSrREpnTZcGNyqN4rZJI4nJG5Oa8T4')
 GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent'
@@ -16,7 +17,6 @@ PERPLEXITY_URL = 'https://api.perplexity.ai/chat/completions'
 
 
 def perplexity_vision(system_prompt, image_b64):
-    """Call Perplexity Sonar with vision. Returns text."""
     payload = json.dumps({
         'model': 'sonar',
         'messages': [{'role': 'user', 'content': [
@@ -34,7 +34,6 @@ def perplexity_vision(system_prompt, image_b64):
 
 
 def perplexity_text(prompt):
-    """Call Perplexity Sonar for text generation."""
     payload = json.dumps({
         'model': 'sonar',
         'messages': [{'role': 'user', 'content': prompt}],
@@ -49,7 +48,6 @@ def perplexity_text(prompt):
 
 
 def gemini_call(contents, retries=3, delay=5):
-    """Call Gemini with retry. Returns text or None on failure."""
     url = f'{GEMINI_URL}?key={GEMINI_KEY}'
     payload = json.dumps({'contents': contents}).encode()
     for attempt in range(retries):
@@ -67,7 +65,6 @@ def gemini_call(contents, retries=3, delay=5):
 
 
 def ai_vision(prompt, image_b64):
-    """Vision with fallback: Gemini -> Perplexity."""
     result = gemini_call([{'parts': [
         {'text': prompt},
         {'inline_data': {'mime_type': 'image/jpeg', 'data': image_b64}}
@@ -78,7 +75,6 @@ def ai_vision(prompt, image_b64):
 
 
 def ai_text(prompt):
-    """Text generation with fallback: Gemini -> Perplexity."""
     result = gemini_call([{'parts': [{'text': prompt}]}])
     if result:
         return result
@@ -97,7 +93,7 @@ RECOGNIZE_PROMPT = (
 
 @app.route('/')
 def index():
-    return send_from_directory('..', 'index.html')
+    return send_from_directory(STATIC_DIR, 'index.html')
 
 
 @app.route('/api/recognize', methods=['POST'])
@@ -123,7 +119,6 @@ def generate_prompt():
     subject = data.get('subject', '')
     style = data.get('style', '')
     mode = data.get('mode', 'reimagine')
-
     if mode == 'faithful':
         instruction = (f'Write a 1-sentence image prompt that faithfully '
                       f'recreates a child\'s drawing of: {subject}. '
@@ -145,7 +140,6 @@ def animate_prompt():
     data = request.json
     subject = data.get('subject', '')
     mode = data.get('mode', 'reimagine')
-
     if mode == 'faithful':
         instruction = (f'Write a 1-2 sentence animation prompt for gentle motion '
                       f'of {subject}. Small movements, breathing, swaying. '
@@ -162,4 +156,5 @@ def animate_prompt():
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8091, debug=True)
+    port = int(os.environ.get('PORT', 8091))
+    app.run(host='0.0.0.0', port=port, debug=True)
