@@ -173,24 +173,125 @@ function setupTools() {
 
   document.getElementById('undo-btn').addEventListener('click', undo);
   document.getElementById('clear-btn').addEventListener('click', clearCanvas);
+
+  document.querySelectorAll('.pattern-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      fillPattern = btn.dataset.pattern;
+      document.querySelectorAll('.pattern-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+  });
 }
 
 function selectTool(tool) {
-  if (tool === 'fill') {
-    fillCanvas();
-    return;
-  }
   currentTool = tool;
   document.querySelectorAll('[data-tool]').forEach(btn => {
     btn.classList.toggle('active', btn.dataset.tool === tool);
   });
-  canvas.style.cursor = tool === 'eraser' ? 'cell' : 'crosshair';
+  canvas.style.cursor = tool === 'fill' ? 'crosshair' : tool === 'eraser' ? 'cell' : 'crosshair';
+  document.getElementById('pattern-picker').style.display = tool === 'fill' ? 'flex' : 'none';
 }
 
-function fillCanvas() {
+let fillPattern = 'solid';
+
+const FILL_PATTERNS = {
+  solid: (x, y) => {
+    const tmp = document.createElement('canvas');
+    tmp.width = 1; tmp.height = 1;
+    const t = tmp.getContext('2d');
+    t.fillStyle = currentColor;
+    t.fillRect(0, 0, 1, 1);
+    const d = t.getImageData(0, 0, 1, 1).data;
+    return [d[0], d[1], d[2]];
+  },
+  rainbow: (x, y) => {
+    const hue = ((x + y) * 2) % 360;
+    return hslToRgb(hue, 100, 55);
+  },
+  sunset: (x, y, h) => {
+    const t = y / h;
+    return [
+      Math.round(255 * (1 - t * 0.3)),
+      Math.round(100 + 80 * (1 - t)),
+      Math.round(50 + 200 * t)
+    ];
+  },
+  ocean: (x, y, h) => {
+    const wave = Math.sin(x * 0.05 + y * 0.03) * 0.5 + 0.5;
+    return [
+      Math.round(20 + 40 * wave),
+      Math.round(80 + 100 * wave),
+      Math.round(160 + 80 * wave)
+    ];
+  },
+  fire: (x, y, h) => {
+    const t = 1 - y / h;
+    const flicker = Math.sin(x * 0.1) * 0.2 + 0.8;
+    return [
+      Math.round(255 * flicker),
+      Math.round((200 * t) * flicker),
+      Math.round((50 * t * t) * flicker)
+    ];
+  },
+  forest: (x, y) => {
+    const noise = Math.sin(x * 0.08) * Math.cos(y * 0.06) * 0.5 + 0.5;
+    return [
+      Math.round(20 + 60 * noise),
+      Math.round(100 + 100 * noise),
+      Math.round(20 + 40 * noise)
+    ];
+  },
+};
+
+function hslToRgb(h, s, l) {
+  s /= 100; l /= 100;
+  const k = (n) => (n + h / 30) % 12;
+  const a = s * Math.min(l, 1 - l);
+  const f = (n) => l - a * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1));
+  return [Math.round(f(0) * 255), Math.round(f(8) * 255), Math.round(f(4) * 255)];
+}
+
+function floodFill(startX, startY) {
   saveState();
-  ctx.fillStyle = currentColor;
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  const w = canvas.width, h = canvas.height;
+  const imageData = ctx.getImageData(0, 0, w, h);
+  const data = imageData.data;
+
+  const sx = Math.floor(startX), sy = Math.floor(startY);
+  const idx = (sy * w + sx) * 4;
+  const tr = data[idx], tg = data[idx + 1], tb = data[idx + 2];
+
+  const patternFn = FILL_PATTERNS[fillPattern];
+  let solidColor = null;
+  if (fillPattern === 'solid') {
+    solidColor = patternFn(0, 0);
+    if (tr === solidColor[0] && tg === solidColor[1] && tb === solidColor[2]) return;
+  }
+
+  const tolerance = 32;
+  const match = (i) => Math.abs(data[i] - tr) + Math.abs(data[i+1] - tg) + Math.abs(data[i+2] - tb) < tolerance;
+
+  const queue = [sx, sy];
+  const visited = new Uint8Array(w * h);
+  visited[sy * w + sx] = 1;
+
+  while (queue.length > 0) {
+    const y = queue.pop(), x = queue.pop();
+    const i = (y * w + x) * 4;
+    const c = solidColor || patternFn(x, y, h);
+    data[i] = c[0]; data[i+1] = c[1]; data[i+2] = c[2]; data[i+3] = 255;
+
+    for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1]]) {
+      const nx = x + dx, ny = y + dy;
+      if (nx < 0 || nx >= w || ny < 0 || ny >= h) continue;
+      const ni = ny * w + nx;
+      if (visited[ni]) continue;
+      visited[ni] = 1;
+      if (match(ni * 4)) { queue.push(nx, ny); }
+    }
+  }
+
+  ctx.putImageData(imageData, 0, 0);
 }
 
 function setupCanvas() {
@@ -207,6 +308,11 @@ function getPos(e) {
 }
 
 function startDraw(e) {
+  if (currentTool === 'fill') {
+    const pos = getPos(e);
+    floodFill(pos.x, pos.y);
+    return;
+  }
   drawing = true;
   saveState();
   const pos = getPos(e);
@@ -359,6 +465,105 @@ async function analyzeDrawing(styleHint) {
 
   const data = await res.json();
   return data.candidates[0].content.parts[0].text.trim();
+}
+
+async function generateStoryboard(basePrompt) {
+  const key = getApiKey();
+  if (!key) return null;
+
+  try {
+    const res = await fetch(GEMINI_URL + '?key=' + key, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents: [{
+          parts: [{
+            text: 'I have this image description: "' + basePrompt + '". Write 4 short image prompts showing this scene animated across 4 moments (like a storyboard). Each should be 1 sentence, describing a different moment of gentle motion/change. Output ONLY 4 lines, one prompt per line, no numbering.'
+          }]
+        }]
+      })
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const text = data.candidates[0].content.parts[0].text.trim();
+    const scenes = text.split('\n').filter(l => l.trim().length > 10).slice(0, 4);
+    return scenes.length >= 3 ? scenes : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+let storyboardAnim = null;
+
+function playStoryboard(images) {
+  stopStoryboard();
+  const resultImg = document.getElementById('result-image');
+  const overlay = document.getElementById('sketch-overlay');
+  overlay.style.opacity = '0';
+
+  let current = 0;
+  const frameDuration = 3000;
+  const fadeTime = 1000;
+
+  resultImg.style.transition = 'opacity ' + fadeTime + 'ms ease-in-out';
+
+  function nextFrame() {
+    current = (current + 1) % images.length;
+    resultImg.style.opacity = '0';
+    setTimeout(() => {
+      resultImg.src = images[current];
+      resultImg.onload = () => {
+        resultImg.style.opacity = '1';
+      };
+    }, fadeTime);
+  }
+
+  storyboardAnim = setInterval(nextFrame, frameDuration);
+  setVideoStatus('Storyboard animation playing (' + images.length + ' scenes)', 'done');
+}
+
+function stopStoryboard() {
+  if (storyboardAnim) {
+    clearInterval(storyboardAnim);
+    storyboardAnim = null;
+  }
+  const resultImg = document.getElementById('result-image');
+  resultImg.style.transition = '';
+  resultImg.style.opacity = '1';
+}
+
+async function loadStoryboardImages(scenes) {
+  setVideoStatus('Generating storyboard (' + scenes.length + ' scenes)...');
+
+  const urls = scenes.map((scene, i) => {
+    const encoded = encodeURIComponent(scene + ', highly detailed, vivid, masterpiece');
+    const seed = Math.floor(Math.random() * 999999);
+    return POLLINATIONS_IMAGE + encoded + '?width=768&height=768&seed=' + seed + '&nologo=true';
+  });
+
+  const loaded = [];
+  for (let i = 0; i < urls.length; i++) {
+    setVideoStatus('Loading scene ' + (i + 1) + '/' + urls.length + '...');
+    try {
+      const img = new Image();
+      img.referrerPolicy = 'no-referrer';
+      await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+        img.src = urls[i];
+      });
+      loaded.push(urls[i]);
+    } catch (e) {
+      // skip failed frames
+    }
+  }
+
+  if (loaded.length >= 2) {
+    playStoryboard(loaded);
+  } else {
+    setVideoStatus('Could not load enough frames', 'error');
+    startMagicEffect();
+  }
 }
 
 function captureSketch() {
@@ -554,6 +759,7 @@ function downloadVideoResult() {
 
 function resetVideoUI() {
   stopMagicEffect();
+  stopStoryboard();
   const videoStatus = document.getElementById('video-status');
   const videoBtn = document.getElementById('download-video-btn');
   const resultVideo = document.getElementById('result-video');
@@ -619,7 +825,7 @@ async function startVeoGeneration(prompt, imgEl) {
       const errMsg = body?.error?.message || 'HTTP ' + res.status;
       if (res.status === 429) {
         setVideoStatus('Veo quota reached — trying free LTX Video...');
-        startLtxFallback(prompt);
+        startVideoFallback(prompt);
         return;
       } else if (res.status === 401 || res.status === 403) {
         setVideoStatus('API key lacks Veo access', 'error');
@@ -730,12 +936,20 @@ function showGeneratedVideo(b64) {
   setVideoStatus('Video ready!', 'done');
 }
 
-async function startLtxFallback(prompt) {
+async function startVideoFallback(prompt) {
+  // Try storyboard first (free, uses Pollinations for frames)
+  setVideoStatus('Creating storyboard animation...');
+  const scenes = await generateStoryboard(prompt);
+  if (scenes) {
+    loadStoryboardImages(scenes);
+    return;
+  }
+
+  // Try LTX Video (free HuggingFace Space)
   try {
     const { Client } = await import('https://cdn.jsdelivr.net/npm/@gradio/client/dist/index.min.js');
     const client = await Client.connect("Lightricks/ltx-video-distilled");
-
-    setVideoStatus('Generating video via LTX (free, may take ~30s)...');
+    setVideoStatus('Generating video via LTX (free, ~30s)...');
 
     const result = await client.predict("/text_to_video", {
       prompt: prompt,
@@ -752,22 +966,20 @@ async function startLtxFallback(prompt) {
 
     const videoData = result.data[0];
     const videoUrl = videoData?.video?.url || videoData?.url;
-    if (!videoUrl) throw new Error('No video URL in response');
+    if (!videoUrl) throw new Error('No video URL');
 
     const resp = await fetch(videoUrl);
     const blob = await resp.blob();
     const blobUrl = URL.createObjectURL(blob);
 
-    const resultImg = document.getElementById('result-image');
-    const resultVideo = document.getElementById('result-video');
-    resultVideo.src = blobUrl;
-    resultVideo.style.display = '';
-    resultImg.style.display = 'none';
+    document.getElementById('result-video').src = blobUrl;
+    document.getElementById('result-video').style.display = '';
+    document.getElementById('result-image').style.display = 'none';
     document.getElementById('download-video-btn').style.display = '';
     setVideoStatus('Video ready! (via LTX)', 'done');
   } catch (e) {
     console.error('LTX fallback error:', e);
-    setVideoStatus('Video unavailable — enjoy the magic effect!', 'error');
+    setVideoStatus('Enjoy the magic effect!', 'error');
     startMagicEffect();
   }
 }
