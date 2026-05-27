@@ -5,6 +5,8 @@ const COLORS = [
 ];
 
 const POLLINATIONS_IMAGE = 'https://image.pollinations.ai/prompt/';
+const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent';
+const GEMINI_KEY = 'AIzaSyC1CgTurH_IOd4TrnzPIVpmWn3f7Rh37Cw';
 
 let canvas, ctx;
 let drawing = false;
@@ -209,49 +211,6 @@ function setLoading(on) {
   btn.querySelector('.btn-loading').style.display = on ? 'inline' : 'none';
 }
 
-function analyzeCanvasColors() {
-  const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
-  const colorCounts = {};
-  const step = 8;
-  for (let i = 0; i < imageData.length; i += 4 * step) {
-    const r = imageData[i], g = imageData[i + 1], b = imageData[i + 2];
-    if (r > 240 && g > 240 && b > 240) continue;
-    const bucket = [Math.round(r / 32) * 32, Math.round(g / 32) * 32, Math.round(b / 32) * 32].join(',');
-    colorCounts[bucket] = (colorCounts[bucket] || 0) + 1;
-  }
-  const sorted = Object.entries(colorCounts).sort((a, b) => b[1] - a[1]);
-  const names = sorted.slice(0, 5).map(([rgb]) => {
-    const [r, g, b] = rgb.split(',').map(Number);
-    return closestColorName(r, g, b);
-  });
-  return [...new Set(names)];
-}
-
-function closestColorName(r, g, b) {
-  const map = [
-    [0, 0, 0, 'black'], [255, 0, 0, 'red'], [0, 255, 0, 'green'],
-    [0, 0, 255, 'blue'], [255, 255, 0, 'yellow'], [255, 128, 0, 'orange'],
-    [128, 0, 255, 'purple'], [255, 0, 255, 'pink'], [0, 255, 255, 'cyan'],
-    [128, 64, 0, 'brown'], [128, 128, 128, 'gray'],
-  ];
-  let best = 'colorful', bestDist = Infinity;
-  for (const [cr, cg, cb, name] of map) {
-    const d = (r - cr) ** 2 + (g - cg) ** 2 + (b - cb) ** 2;
-    if (d < bestDist) { bestDist = d; best = name; }
-  }
-  return best;
-}
-
-function buildPrompt(description) {
-  const colors = analyzeCanvasColors();
-  let prompt = description;
-  if (colors.length > 0) {
-    prompt += ', in ' + colors.join(' and ') + ' tones';
-  }
-  prompt += ', highly detailed, professional quality, vivid colors, beautiful lighting, masterpiece';
-  return prompt;
-}
-
 function isCanvasBlank() {
   const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
   const step = 16;
@@ -261,25 +220,67 @@ function isCanvasBlank() {
   return true;
 }
 
-async function generate() {
-  const description = document.getElementById('style-prompt').value.trim();
+function getCanvasBase64() {
+  const tmp = document.createElement('canvas');
+  tmp.width = 512;
+  tmp.height = 512;
+  const tctx = tmp.getContext('2d');
+  tctx.fillStyle = '#ffffff';
+  tctx.fillRect(0, 0, 512, 512);
+  tctx.drawImage(canvas, 0, 0, 512, 512);
+  return tmp.toDataURL('image/jpeg', 0.8).split(',')[1];
+}
 
-  if (!description) {
-    if (isCanvasBlank()) {
-      setStatus('Draw something first, then click Bring to Life!', true);
-    } else {
-      setStatus('Tell the AI what you drew — type it or click a suggestion below', true);
-      document.querySelectorAll('.suggestion').forEach(s => s.classList.add('wiggle'));
-      setTimeout(() => document.querySelectorAll('.suggestion').forEach(s => s.classList.remove('wiggle')), 600);
-    }
-    document.getElementById('style-prompt').focus();
+async function analyzeDrawing(styleHint) {
+  const b64 = getCanvasBase64();
+  const systemPrompt = styleHint
+    ? 'Describe this hand drawing for an image generator. The user wants it in this style: "' + styleHint + '". Write a vivid 2-3 sentence image generation prompt describing a polished version. Output ONLY the prompt.'
+    : 'Describe this hand drawing for an image generator. Write a vivid 2-3 sentence image generation prompt that brings this sketch to life as a polished, detailed artwork. Mention subject, composition, colors, lighting, and mood. Output ONLY the prompt.';
+
+  const res = await fetch(GEMINI_URL + '?key=' + GEMINI_KEY, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{
+        parts: [
+          { text: systemPrompt },
+          { inline_data: { mime_type: 'image/jpeg', data: b64 } }
+        ]
+      }]
+    })
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error('Vision API error (' + res.status + ')');
+  }
+
+  const data = await res.json();
+  return data.candidates[0].content.parts[0].text.trim();
+}
+
+async function generate() {
+  if (isCanvasBlank()) {
+    setStatus('Draw something first, then click Bring to Life!', true);
     return;
   }
 
   setLoading(true);
-  setStatus('Generating your image...');
+  const styleHint = document.getElementById('style-prompt').value.trim();
+  setStatus('AI is analyzing your drawing...');
 
-  const prompt = buildPrompt(description);
+  try {
+    const prompt = await analyzeDrawing(styleHint);
+    setStatus('Generating: ' + prompt.slice(0, 60) + '...');
+    loadResultImage(prompt);
+  } catch (err) {
+    console.error(err);
+    setLoading(false);
+    setStatus('Error: ' + err.message, true);
+  }
+}
+
+function loadResultImage(prompt) {
   const encoded = encodeURIComponent(prompt);
   const seed = Math.floor(Math.random() * 999999);
   const url = POLLINATIONS_IMAGE + encoded + '?width=768&height=768&seed=' + seed + '&nologo=true';
