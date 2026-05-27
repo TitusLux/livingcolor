@@ -5,6 +5,7 @@ const COLORS = [
 ];
 
 const POLLINATIONS_IMAGE = 'https://image.pollinations.ai/prompt/';
+const POLLINATIONS_TEXT = 'https://text.pollinations.ai/';
 
 let canvas, ctx;
 let drawing = false;
@@ -26,6 +27,7 @@ function init() {
   setupCanvas();
   setupGenerate();
   setupKeyboard();
+  setupSuggestions();
 
   saveState();
 }
@@ -184,6 +186,14 @@ function setupGenerate() {
   document.getElementById('retry-btn')?.addEventListener('click', generate);
 }
 
+function setupSuggestions() {
+  document.querySelectorAll('.suggestion').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.getElementById('style-prompt').value = btn.dataset.prompt;
+    });
+  });
+}
+
 function setStatus(msg, isError) {
   const el = document.getElementById('status');
   el.textContent = msg;
@@ -230,23 +240,52 @@ function closestColorName(r, g, b) {
   return best;
 }
 
-function buildPrompt(description) {
+async function enhancePrompt(description) {
   const colors = analyzeCanvasColors();
-  let prompt = description || 'an artistic scene';
-  if (colors.length > 0) {
-    prompt += ', featuring ' + colors.join(' and ') + ' tones';
+  const colorNote = colors.length > 0 ? ' The drawing uses ' + colors.join(', ') + ' colors.' : '';
+  const prompt = 'Turn this into a vivid 2-sentence image generation prompt. ' +
+    'Describe a polished, detailed version of: ' + description + '.' + colorNote +
+    ' Output ONLY the scene description, nothing else.';
+  try {
+    const res = await fetch(POLLINATIONS_TEXT + encodeURIComponent(prompt));
+    if (!res.ok) throw new Error('enhance failed');
+    const text = await res.text();
+    if (text.length > 20 && !text.includes('NOTICE') && !text.includes('deprecated')) {
+      return text.trim();
+    }
+  } catch (e) {
+    // fall through to manual prompt
   }
-  prompt += ', highly detailed, professional quality, vivid colors, beautiful lighting';
-  return prompt;
+  let manual = description;
+  if (colors.length > 0) {
+    manual += ', featuring ' + colors.join(' and ') + ' tones';
+  }
+  manual += ', highly detailed, professional quality, vivid colors, beautiful lighting';
+  return manual;
 }
 
 async function generate() {
   const description = document.getElementById('style-prompt').value.trim();
+  if (!description) {
+    setStatus('Tell the AI what you drew — type a description or click a suggestion below', true);
+    document.getElementById('style-prompt').focus();
+    return;
+  }
 
   setLoading(true);
-  setStatus('Generating your image...');
+  setStatus('Enhancing your description with AI...');
 
-  const prompt = buildPrompt(description);
+  try {
+    const prompt = await enhancePrompt(description);
+    setStatus('Generating image...');
+    loadResultImage(prompt);
+  } catch (err) {
+    setLoading(false);
+    setStatus('Error: ' + err.message, true);
+  }
+}
+
+function loadResultImage(prompt) {
   const encoded = encodeURIComponent(prompt);
   const seed = Math.floor(Math.random() * 999999);
   const url = POLLINATIONS_IMAGE + encoded + '?width=768&height=768&seed=' + seed + '&nologo=true';
@@ -264,7 +303,7 @@ async function generate() {
   };
   resultImg.onerror = () => {
     setLoading(false);
-    setStatus('Image generation failed — try a different description or try again in a moment', true);
+    setStatus('Image generation failed — try again in a moment', true);
   };
   resultImg.src = url;
 }
