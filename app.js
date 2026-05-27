@@ -351,7 +351,7 @@ async function analyzeDrawing(styleHint) {
       showSetup();
       throw new Error('API key rejected — please enter a valid key.');
     }
-    if (res.status === 429) {
+    if (res.status === 429 || res.status === 503) {
       return null;
     }
     throw new Error('Vision API error (' + res.status + ')');
@@ -477,8 +477,8 @@ async function generate() {
   try {
     let prompt = await analyzeDrawing(styleHint);
     if (!prompt) {
-      const fallback = styleHint || 'a creative colorful artwork';
-      setStatus('Vision rate limited — using description instead...');
+      const fallback = styleHint || 'a vibrant creative artwork, imaginative scene';
+      setStatus('AI vision busy — generating from description...');
       prompt = fallback + ', highly detailed, professional quality, vivid colors, beautiful lighting, masterpiece';
     }
     lastGeneratedPrompt = prompt;
@@ -553,6 +553,7 @@ function downloadVideoResult() {
 /* --- Veo Video Generation --- */
 
 function resetVideoUI() {
+  stopMagicEffect();
   const videoStatus = document.getElementById('video-status');
   const videoBtn = document.getElementById('download-video-btn');
   const resultVideo = document.getElementById('result-video');
@@ -617,7 +618,8 @@ async function startVeoGeneration(prompt, imgEl) {
       const body = await res.json().catch(() => ({}));
       const errMsg = body?.error?.message || 'HTTP ' + res.status;
       if (res.status === 429) {
-        setVideoStatus('Video rate limited — try again later', 'error');
+        setVideoStatus('Video quota resets tomorrow — enjoy the magic effect!', 'error');
+        startMagicEffect();
       } else if (res.status === 401 || res.status === 403) {
         setVideoStatus('API key lacks Veo access', 'error');
       } else {
@@ -725,6 +727,78 @@ function showGeneratedVideo(b64) {
   videoBtn.style.display = '';
 
   setVideoStatus('Video ready!', 'done');
+}
+
+let magicAnimId = null;
+
+function startMagicEffect() {
+  stopMagicEffect();
+  const overlay = document.getElementById('sketch-overlay');
+  const container = document.getElementById('morph-container');
+  const rect = container.getBoundingClientRect();
+  overlay.width = rect.width;
+  overlay.height = rect.height;
+  overlay.style.opacity = '1';
+  const octx = overlay.getContext('2d');
+  const w = overlay.width, h = overlay.height;
+
+  const particles = [];
+  for (let i = 0; i < 60; i++) {
+    particles.push({
+      x: Math.random() * w,
+      y: Math.random() * h,
+      vx: (Math.random() - 0.5) * 0.8,
+      vy: -Math.random() * 1.2 - 0.3,
+      size: Math.random() * 4 + 1,
+      life: Math.random(),
+      hue: Math.random() * 60 + 30,
+    });
+  }
+
+  let t = 0;
+  function animate() {
+    t++;
+    octx.clearRect(0, 0, w, h);
+
+    for (const p of particles) {
+      p.x += p.vx + Math.sin(t * 0.02 + p.life * 10) * 0.3;
+      p.y += p.vy;
+      p.life -= 0.003;
+
+      if (p.life <= 0 || p.y < -10) {
+        p.x = Math.random() * w;
+        p.y = h + 10;
+        p.life = 1;
+        p.hue = Math.random() * 60 + 30;
+      }
+
+      const alpha = p.life * 0.7;
+      const glow = p.size * 3;
+      octx.save();
+      octx.globalAlpha = alpha * 0.3;
+      octx.fillStyle = `hsl(${p.hue}, 100%, 70%)`;
+      octx.beginPath();
+      octx.arc(p.x, p.y, glow, 0, Math.PI * 2);
+      octx.fill();
+      octx.globalAlpha = alpha;
+      octx.fillStyle = `hsl(${p.hue}, 100%, 90%)`;
+      octx.beginPath();
+      octx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+      octx.fill();
+      octx.restore();
+    }
+
+    magicAnimId = requestAnimationFrame(animate);
+  }
+
+  magicAnimId = requestAnimationFrame(animate);
+}
+
+function stopMagicEffect() {
+  if (magicAnimId) {
+    cancelAnimationFrame(magicAnimId);
+    magicAnimId = null;
+  }
 }
 
 document.addEventListener('DOMContentLoaded', init);
