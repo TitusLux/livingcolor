@@ -268,7 +268,7 @@ function floodFill(startX, startY) {
     if (tr === solidColor[0] && tg === solidColor[1] && tb === solidColor[2]) return;
   }
 
-  const tolerance = 32;
+  const tolerance = 48;
   const match = (i) => Math.abs(data[i] - tr) + Math.abs(data[i+1] - tg) + Math.abs(data[i+2] - tb) < tolerance;
 
   const queue = [sx, sy];
@@ -304,7 +304,10 @@ function setupCanvas() {
 
 function getPos(e) {
   const rect = canvas.getBoundingClientRect();
-  return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  return {
+    x: (e.clientX - rect.left) * (canvas.width / rect.width),
+    y: (e.clientY - rect.top) * (canvas.height / rect.height)
+  };
 }
 
 function startDraw(e) {
@@ -532,7 +535,13 @@ function stopStoryboard() {
   resultImg.style.opacity = '1';
 }
 
-async function loadStoryboardImages(scenes) {
+async function loadStoryboardImages(scenes, basePrompt) {
+  if (!scenes && basePrompt) {
+    setVideoStatus('Creating storyboard...');
+    scenes = await generateStoryboard(basePrompt);
+    if (!scenes) return;
+  }
+  if (!scenes) return;
   setVideoStatus('Generating storyboard (' + scenes.length + ' scenes)...');
 
   const urls = scenes.map((scene, i) => {
@@ -722,7 +731,8 @@ function loadResultImage(prompt) {
     actions.style.display = 'flex';
     setTimeout(playMorph, 300);
 
-    // Kick off Veo video generation from the loaded image
+    // Start storyboard animation + try Veo in parallel
+    loadStoryboardImages(null, prompt);
     startVeoGeneration(prompt, resultImg);
   };
   resultImg.onerror = () => {
@@ -735,13 +745,19 @@ function loadResultImage(prompt) {
 function downloadResult() {
   const video = document.getElementById('result-video');
   if (video.style.display !== 'none' && video.src) {
-    // If video is showing, download the video
     downloadVideoResult();
     return;
   }
   const img = document.getElementById('result-image');
   if (!img.src) return;
-  window.open(img.src, '_blank');
+  const a = document.createElement('a');
+  a.href = img.src;
+  a.download = 'livingcolor-' + Date.now() + '.jpg';
+  a.target = '_blank';
+  a.rel = 'noreferrer';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
 }
 
 function downloadVideoResult() {
