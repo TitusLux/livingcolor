@@ -618,8 +618,9 @@ async function startVeoGeneration(prompt, imgEl) {
       const body = await res.json().catch(() => ({}));
       const errMsg = body?.error?.message || 'HTTP ' + res.status;
       if (res.status === 429) {
-        setVideoStatus('Video quota resets tomorrow — enjoy the magic effect!', 'error');
-        startMagicEffect();
+        setVideoStatus('Veo quota reached — trying free LTX Video...');
+        startLtxFallback(prompt);
+        return;
       } else if (res.status === 401 || res.status === 403) {
         setVideoStatus('API key lacks Veo access', 'error');
       } else {
@@ -727,6 +728,48 @@ function showGeneratedVideo(b64) {
   videoBtn.style.display = '';
 
   setVideoStatus('Video ready!', 'done');
+}
+
+async function startLtxFallback(prompt) {
+  try {
+    const { Client } = await import('https://cdn.jsdelivr.net/npm/@gradio/client/dist/index.min.js');
+    const client = await Client.connect("Lightricks/ltx-video-distilled");
+
+    setVideoStatus('Generating video via LTX (free, may take ~30s)...');
+
+    const result = await client.predict("/text_to_video", {
+      prompt: prompt,
+      negative_prompt: "blurry, distorted, worst quality",
+      height_ui: 512,
+      width_ui: 512,
+      mode: "text-to-video",
+      duration_ui: 2,
+      seed_ui: 42,
+      randomize_seed: true,
+      ui_guidance_scale: 1,
+      improve_texture_flag: false,
+    });
+
+    const videoData = result.data[0];
+    const videoUrl = videoData?.video?.url || videoData?.url;
+    if (!videoUrl) throw new Error('No video URL in response');
+
+    const resp = await fetch(videoUrl);
+    const blob = await resp.blob();
+    const blobUrl = URL.createObjectURL(blob);
+
+    const resultImg = document.getElementById('result-image');
+    const resultVideo = document.getElementById('result-video');
+    resultVideo.src = blobUrl;
+    resultVideo.style.display = '';
+    resultImg.style.display = 'none';
+    document.getElementById('download-video-btn').style.display = '';
+    setVideoStatus('Video ready! (via LTX)', 'done');
+  } catch (e) {
+    console.error('LTX fallback error:', e);
+    setVideoStatus('Video unavailable — enjoy the magic effect!', 'error');
+    startMagicEffect();
+  }
 }
 
 let magicAnimId = null;
