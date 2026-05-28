@@ -14,9 +14,11 @@ export function stopLiving() {
 
 // Apply living effect to an image bubble in the chat.
 // imgEl: the <img> element to bring to life.
-export function makeAlive(imgEl) {
+// motionPlan (optional): Claude-generated motion plan with layers + transforms.
+//   { duration_ms, loop, layers: [{ name, transforms: [{type, axis, amplitude, period_ms, easing}] }] }
+export function makeAlive(imgEl, motionPlan) {
   if (!imgEl || !imgEl.complete) return;
-  log('living', 'starting living effect');
+  log('living', 'starting living effect', { hasPlan: !!motionPlan });
   stopLiving();
 
   const parent = imgEl.parentElement;
@@ -57,17 +59,54 @@ export function makeAlive(imgEl) {
   imgEl.style.transformOrigin = 'center center';
   imgEl.style.transition = 'none';
 
-  let frame = 0;
-  function animate() {
-    frame++;
-    const t = frame * 0.015;
+  // Default plan if Claude didn't provide one
+  const plan = motionPlan || {
+    duration_ms: 4000,
+    loop: true,
+    layers: [{
+      name: 'whole_image',
+      transforms: [
+        { type: 'translate', axis: 'y', amplitude: 4, period_ms: 3000, easing: 'sine' },
+        { type: 'rotate', amplitude: 0.6, period_ms: 4000, easing: 'sine' },
+        { type: 'scale', amplitude: 0.015, period_ms: 2500, easing: 'sine' },
+      ],
+    }],
+  };
 
-    // Image: subtle breathing + tilt
-    const scale = 1 + Math.sin(t * 0.7) * 0.015;
-    const tiltX = Math.sin(t * 0.5) * 0.6;
-    const tiltY = Math.cos(t * 0.4) * 0.4;
+  const startTime = performance.now();
+
+  function evalTransform(tr, elapsedMs) {
+    const phase = (elapsedMs % tr.period_ms) / tr.period_ms; // 0..1
+    let v;
+    if (tr.easing === 'linear') v = phase * 2 - 1;
+    else if (tr.easing === 'ease') v = phase < 0.5 ? 2 * phase * phase : 1 - Math.pow(-2 * phase + 2, 2) / 2;
+    else v = Math.sin(phase * Math.PI * 2); // sine default
+    return v * tr.amplitude;
+  }
+
+  function animate() {
+    const now = performance.now();
+    const elapsed = now - startTime;
+
+    // Apply transforms from the first layer (whole-image for now)
+    const layer = plan.layers[0];
+    let tx = 0, ty = 0, rot = 0, scale = 1;
+    for (const tr of layer.transforms) {
+      const v = evalTransform(tr, elapsed);
+      if (tr.type === 'translate') {
+        if (tr.axis === 'x') tx += v;
+        else ty += v;
+      } else if (tr.type === 'rotate') {
+        rot += v;
+      } else if (tr.type === 'scale') {
+        scale += v;
+      }
+    }
     imgEl.style.transform =
-      `scale(${scale}) rotate(${tiltX}deg) translate(${tiltY}px, ${-tiltY}px)`;
+      `translate(${tx}px, ${ty}px) rotate(${rot}deg) scale(${scale})`;
+
+    // Sparkles for the particle layer
+    const t = elapsed * 0.001;
 
     // Particles
     pctx.clearRect(0, 0, w, h);

@@ -180,6 +180,7 @@ export async function startChatFlow() {
     log('ai', 'recognition success', { subject, composition, details, character, message: message.slice(0, 100) });
     removeLoading();
     setChatSubject(subject);
+    window._lcSubject = subject;
     window._lcDrawingInfo = { composition, details, character };
     appendMessage({ role: 'ai', type: 'text', content: message });
 
@@ -247,6 +248,7 @@ async function startGeneration(subject) {
     const resultImg = document.getElementById('result-image');
     if (resultImg) { resultImg.src = url; resultImg.style.display = 'none'; }
 
+    archiveDrawing(subject, url, prompt);
     startVideoForChat(prompt, subject);
   };
   img.onerror = () => {
@@ -290,16 +292,67 @@ async function startVideoForChat(prompt, subject) {
   }
 }
 
-function applyLivingToLastImage() {
-  // Find the most recent AI image bubble in the chat and bring it to life
+async function archiveDrawing(subject, aiImageUrl, prompt) {
+  // Only when local backend is enabled
+  if (localStorage.getItem('use_backend') !== 'true') return;
+  try {
+    const info = window._lcDrawingInfo || {};
+    const styleHint = document.getElementById('style-prompt')?.value.trim() || '';
+    const mode = document.getElementById('animation-mode')?.checked ? 'faithful' : 'reimagine';
+    const res = await fetch('/api/archive', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        drawing: getCanvasBase64(),
+        ai_image_url: aiImageUrl,
+        subject, prompt,
+        composition: info.composition || '',
+        details: info.details || '',
+        character: info.character || '',
+        mode, style: styleHint,
+      }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      log('archive', 'saved', { path: data.path, files: data.saved });
+    }
+  } catch (e) {
+    log('archive', 'failed', { error: e.message });
+  }
+}
+
+async function applyLivingToLastImage() {
   const imgs = document.querySelectorAll('.chat-bubble img');
   if (imgs.length === 0) return;
   const lastImg = imgs[imgs.length - 1];
-  if (lastImg.complete) {
-    makeAlive(lastImg);
-  } else {
-    lastImg.addEventListener('load', () => makeAlive(lastImg), { once: true });
+
+  // Try to get a Claude-designed motion plan when backend is available
+  let plan = null;
+  if (localStorage.getItem('use_backend') === 'true') {
+    try {
+      const info = window._lcDrawingInfo || {};
+      const res = await fetch('/api/motion-plan', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          subject: window._lcSubject || 'object',
+          composition: info.composition || '',
+          details: info.details || '',
+        }),
+        signal: AbortSignal.timeout(45000),
+      });
+      if (res.ok) {
+        plan = await res.json();
+        log('motion', 'plan received', { layers: plan.layers?.length });
+      }
+    } catch (e) {
+      log('motion', 'plan fetch failed', { error: e.message });
+    }
   }
+
+  const start = () => makeAlive(lastImg, plan);
+  if (lastImg.complete) start();
+  else lastImg.addEventListener('load', start, { once: true });
 }
 
 function finishChat(subject) {
