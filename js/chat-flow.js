@@ -9,6 +9,7 @@ import {
   showTextInput, hideButtons, setButtonHandler, hidePlaceholder,
 } from './chat.js';
 import { log } from './logger.js';
+import { makeAlive, stopLiving } from './living.js';
 
 const EMOJI_ITEMS = [
   { emoji: '🦋', label: 'butterfly' }, { emoji: '🐱', label: 'cat' },
@@ -227,6 +228,7 @@ function handleSubjectPicked(subject, display) {
 
 async function startGeneration(subject) {
   hideButtons();
+  stopLiving();
   appendMessage({ role: 'ai', type: 'loading', content: 'I\'m painting your ' + subject + '... 🎨' });
 
   const styleHint = document.getElementById('style-prompt').value.trim();
@@ -273,17 +275,30 @@ async function startVideoForChat(prompt, subject) {
     log('error', 'video gen exception', { error: e.message });
   }
 
-  // If video didn't arrive in 30s after Veo returns, give up gracefully
+  // If video didn't arrive in 30s, fall back to client-side "living" effect
   if (!done) {
     setTimeout(() => {
       if (!done) {
         done = true;
-        log('flow', 'video timeout, finishing without video');
+        log('flow', 'video timeout, applying living effect');
         removeLoading();
-        appendMessage({ role: 'ai', type: 'text', content: 'Couldn\'t make a video this time — all the video AIs are busy. But look at your beautiful picture! 🎨' });
+        appendMessage({ role: 'ai', type: 'text', content: 'Let me sprinkle some magic on it instead! ✨' });
+        applyLivingToLastImage();
         finishChat(subject);
       }
     }, 30000);
+  }
+}
+
+function applyLivingToLastImage() {
+  // Find the most recent AI image bubble in the chat and bring it to life
+  const imgs = document.querySelectorAll('.chat-bubble img');
+  if (imgs.length === 0) return;
+  const lastImg = imgs[imgs.length - 1];
+  if (lastImg.complete) {
+    makeAlive(lastImg);
+  } else {
+    lastImg.addEventListener('load', () => makeAlive(lastImg), { once: true });
   }
 }
 
