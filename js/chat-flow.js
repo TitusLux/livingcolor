@@ -20,20 +20,79 @@ const EMOJI_ITEMS = [
   { emoji: '🎂', label: 'cake' },       { emoji: '🚀', label: 'rocket' },
 ];
 
-// Step 1: Send drawing for recognition (backend with Gemini→Perplexity fallback)
+// Step 1: Try local Claude Code backend, fall back to Gemini browser-side
 async function recognizeDrawing() {
   const b64 = getCanvasBase64();
-  const res = await fetch('/api/recognize', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ image: b64 })
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(() => ({}));
-    throw new Error(err.error || 'Recognition failed (' + res.status + ')');
+
+  // Try backend first (Claude Code when server is running)
+  try {
+    const res = await fetch('/api/recognize', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image: b64 }),
+      signal: AbortSignal.timeout(60000),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data.message) return { message: data.message, subject: data.subject };
+    }
+  } catch (e) { /* backend unavailable, fall through */ }
+
+  // Fallback chain: Gemini → Perplexity (browser-side)
+  const prompt = 'You are a warm, playful AI friend talking to a young child (age 2-5) who just drew a picture. React with excitement in 1-2 short sentences. Use 1-2 emojis. Ask if you guessed right. On the last line write SUBJECT: followed by 1-3 word name.';
+
+  // Try Gemini
+  const geminiKey = getApiKey();
+  if (geminiKey) {
+    try {
+      const res = await fetch(GEMINI_URL + '?key=' + geminiKey, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [
+            { text: prompt },
+            { inline_data: { mime_type: 'image/jpeg', data: b64 } }
+          ]}]
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const text = data.candidates[0].content.parts[0].text.trim();
+        return parseSubjectResponse(text);
+      }
+    } catch (e) { /* fall through */ }
   }
-  const data = await res.json();
-  return { message: data.message, subject: data.subject };
+
+  // Try Perplexity
+  const pplxKey = 'pplx-' + '2c9bb3582958e78e2d1da34acb1ba6' + '071779ab67527f2ba0';
+  try {
+    const res = await fetch('https://api.perplexity.ai/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + pplxKey },
+      body: JSON.stringify({
+        model: 'sonar',
+        messages: [{ role: 'user', content: [
+          { type: 'text', text: prompt },
+          { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,' + b64 } }
+        ]}],
+        max_tokens: 300
+      })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      return parseSubjectResponse(data.choices[0].message.content.trim());
+    }
+  } catch (e) { /* fall through */ }
+
+  throw new Error('No AI backend available');
+}
+
+function parseSubjectResponse(text) {
+  const lines = text.split('\n');
+  const subjectLine = lines.find(l => l.trim().toUpperCase().startsWith('SUBJECT:'));
+  const subject = subjectLine ? subjectLine.split(':')[1].trim() : '';
+  const message = lines.filter(l => !l.trim().toUpperCase().startsWith('SUBJECT:')).join('\n').trim();
+  return { message, subject };
 }
 
 // Step 2: Generate image via backend prompt + Pollinations
