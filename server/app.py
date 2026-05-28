@@ -63,7 +63,12 @@ RECOGNIZE_PROMPT = (
     'COMPOSITION: <one short phrase: "full figure", "headshot", "wide scene", '
     '"close-up", "object on background", etc>\n'
     'DETAILS: <a sentence describing what they actually drew: body parts '
-    'visible, action/pose, colors, positions, anything specific>'
+    'visible, action/pose, colors, positions>\n'
+    'CHARACTER: <2-3 sentences capturing the drawing\'s distinctive quirks — '
+    'proportions (e.g. "oblong head", "long thin arms", "tiny legs"), shapes '
+    '(round/oval/square), expression/mood, posture, any unusual or charming '
+    'details. These are the things that make THIS drawing unique, not just '
+    'any drawing of the subject. Be specific and faithful to what you see.>'
 )
 
 
@@ -73,7 +78,7 @@ def recognize():
     image_b64 = data.get('image', '')
     try:
         text = claude(RECOGNIZE_PROMPT, image_b64)
-        fields = {'SUBJECT': '', 'COMPOSITION': '', 'DETAILS': ''}
+        fields = {'SUBJECT': '', 'COMPOSITION': '', 'DETAILS': '', 'CHARACTER': ''}
         keep_lines = []
         for line in text.split('\n'):
             matched = False
@@ -90,6 +95,7 @@ def recognize():
             'subject': fields['SUBJECT'],
             'composition': fields['COMPOSITION'],
             'details': fields['DETAILS'],
+            'character': fields['CHARACTER'],
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -103,21 +109,26 @@ def generate_prompt():
     mode = data.get('mode', 'reimagine')
     composition = data.get('composition', '')
     details = data.get('details', '')
+    character = data.get('character', '')
 
     framing = f'Composition: {composition}. ' if composition else ''
     detail_note = f'The child drew: {details} ' if details else ''
+    character_note = f'Distinctive traits to preserve: {character} ' if character else ''
 
     if mode == 'faithful':
         prompt = (f'Write a 1-sentence image generation prompt that faithfully '
                   f'recreates a child\'s drawing of: {subject}. {detail_note}'
-                  f'{framing}IMPORTANT: preserve the original framing/composition. '
+                  f'{character_note}{framing}IMPORTANT: preserve the original '
+                  f'framing AND the distinctive proportions/quirks. '
                   f'Keep it simple and childlike. Output ONLY the prompt, nothing else.')
     else:
         prompt = (f'Write a vivid 2-3 sentence image generation prompt that brings '
                   f'"{subject}" to life as magical, beautiful artwork a child would love. '
-                  f'{detail_note}{framing}'
-                  f'IMPORTANT: preserve the framing the child drew (if they drew a '
-                  f'full figure, generate a full body shot; if a wide scene, keep it wide). '
+                  f'{detail_note}{character_note}{framing}'
+                  f'IMPORTANT: preserve the framing AND the distinctive character of '
+                  f'the original drawing — the proportions, shapes, expression, and '
+                  f'quirky details that make THIS drawing unique. Reimagine the style, '
+                  f'not the character. '
                   f'{("Style: " + style + ". ") if style else ""}'
                   f'Output ONLY the prompt, nothing else.')
     try:
