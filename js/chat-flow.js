@@ -30,7 +30,7 @@ function logStep(msg) {
 // Step 1: Try AI providers in order, logging each attempt
 async function recognizeDrawing() {
   const b64 = getCanvasBase64();
-  const prompt = 'You are a warm, playful AI friend talking to a young child (age 2-5) who just drew a picture. React with excitement in 1-2 short sentences. Use 1-2 emojis. Ask if you guessed right. On the last line write SUBJECT: followed by 1-3 word name.';
+  const prompt = 'You are a warm, playful AI friend talking to a young child (age 2-5) who just drew a picture. React with excitement in 1-2 short sentences. Use 1-2 emojis. Ask if you guessed right.\n\nThen on separate lines at the end, write:\nSUBJECT: <1-3 words naming what they drew>\nCOMPOSITION: <one short phrase: "full figure", "headshot", "wide scene", "close-up", "object on background", etc>\nDETAILS: <a sentence describing what they actually drew: body parts visible, action/pose, colors, positions, anything specific>';
 
   const useBackend = localStorage.getItem('use_backend') === 'true';
 
@@ -106,14 +106,23 @@ async function recognizeDrawing() {
 
 function parseSubjectResponse(text) {
   const lines = text.split('\n');
-  const subjectLine = lines.find(l => l.trim().toUpperCase().startsWith('SUBJECT:'));
-  const subject = subjectLine ? subjectLine.split(':')[1].trim() : '';
-  const message = lines.filter(l => !l.trim().toUpperCase().startsWith('SUBJECT:')).join('\n').trim();
-  return { message, subject };
+  const findLine = (key) => {
+    const l = lines.find(x => x.trim().toUpperCase().startsWith(key + ':'));
+    return l ? l.split(':').slice(1).join(':').trim() : '';
+  };
+  const subject = findLine('SUBJECT');
+  const composition = findLine('COMPOSITION');
+  const details = findLine('DETAILS');
+  const meta = ['SUBJECT', 'COMPOSITION', 'DETAILS'];
+  const message = lines
+    .filter(l => !meta.some(k => l.trim().toUpperCase().startsWith(k + ':')))
+    .join('\n').trim();
+  // Stash composition + details on the subject return so generate-image can use them
+  return { message, subject, composition, details };
 }
 
 // Step 2: Generate image prompt + Pollinations URL
-async function generateImage(subject, styleHint) {
+async function generateImage(subject, styleHint, composition, details) {
   const mode = document.getElementById('animation-mode')?.checked ? 'faithful' : 'reimagine';
   const useBackend = localStorage.getItem('use_backend') === 'true';
   let prompt;
@@ -123,18 +132,21 @@ async function generateImage(subject, styleHint) {
       const res = await fetch('/api/generate-prompt', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ subject, style: styleHint, mode })
+        body: JSON.stringify({ subject, style: styleHint, mode, composition, details })
       });
       if (res.ok) prompt = (await res.json()).prompt;
     } catch (e) { /* fall through */ }
   }
 
   if (!prompt) {
+    const compHint = composition ? ', ' + composition : '';
+    const detailHint = details ? ' Scene: ' + details + '.' : '';
     prompt = styleHint
-      ? subject + ', ' + styleHint + ', highly detailed, vivid colors, masterpiece'
-      : 'A beautiful, vibrant ' + subject + ', highly detailed, vivid colors, masterpiece, whimsical, magical';
+      ? subject + compHint + ', ' + styleHint + ', highly detailed, vivid colors, masterpiece.' + detailHint
+      : 'A beautiful, vibrant ' + subject + compHint + ', highly detailed, vivid colors, masterpiece, whimsical, magical.' + detailHint;
   }
   setLastGeneratedPrompt(prompt);
+  log('flow', 'final image prompt', { prompt: prompt.slice(0, 200) });
   logStep('Generating with Pollinations.ai…');
   const encoded = encodeURIComponent(prompt);
   const seed = Math.floor(Math.random() * 999999);
@@ -161,10 +173,13 @@ export async function startChatFlow() {
   appendMessage({ role: 'ai', type: 'loading', content: 'Looking at your drawing...' });
 
   try {
-    const { message, subject } = await recognizeDrawing();
-    log('ai', 'recognition success', { subject, message: message.slice(0, 100) });
+    const result = await recognizeDrawing();
+    const { message, subject, composition, details } = result;
+    log('ai', 'recognition success', { subject, composition, details, message: message.slice(0, 100) });
     removeLoading();
     setChatSubject(subject);
+    // Stash composition+details for use during generation
+    window._lcDrawingInfo = { composition, details };
     appendMessage({ role: 'ai', type: 'text', content: message });
 
     showButtons([
@@ -175,6 +190,7 @@ export async function startChatFlow() {
 
     setButtonHandler((value, label) => handleStep1Response(value, label, subject));
   } catch (err) {
+    log('error', 'recognition failed', { error: err.message });
     removeLoading();
     appendMessage({ role: 'ai', type: 'text', content: 'Oops, I couldn\'t see your drawing! Try again?' });
     console.error(err);
@@ -214,7 +230,8 @@ async function startGeneration(subject) {
   appendMessage({ role: 'ai', type: 'loading', content: 'I\'m painting your ' + subject + '... 🎨' });
 
   const styleHint = document.getElementById('style-prompt').value.trim();
-  const { url, prompt } = await generateImage(subject, styleHint);
+  const info = window._lcDrawingInfo || {};
+  const { url, prompt } = await generateImage(subject, styleHint, info.composition, info.details);
 
   // Load the image
   const img = new Image();

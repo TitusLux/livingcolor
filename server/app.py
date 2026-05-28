@@ -58,8 +58,12 @@ RECOGNIZE_PROMPT = (
     'excitement. Guess what they drew in 1-2 short, simple sentences. '
     'Use 1-2 emojis. Ask if you guessed right. Keep it very simple — '
     'short words, big feelings.\n\n'
-    'IMPORTANT: On the very last line, write SUBJECT: followed by 1-3 words '
-    'naming what you think it is (e.g. SUBJECT: butterfly).'
+    'Then on separate lines at the end, write:\n'
+    'SUBJECT: <1-3 words naming what they drew>\n'
+    'COMPOSITION: <one short phrase: "full figure", "headshot", "wide scene", '
+    '"close-up", "object on background", etc>\n'
+    'DETAILS: <a sentence describing what they actually drew: body parts '
+    'visible, action/pose, colors, positions, anything specific>'
 )
 
 
@@ -69,13 +73,24 @@ def recognize():
     image_b64 = data.get('image', '')
     try:
         text = claude(RECOGNIZE_PROMPT, image_b64)
-        subject, message = '', text
+        fields = {'SUBJECT': '', 'COMPOSITION': '', 'DETAILS': ''}
+        keep_lines = []
         for line in text.split('\n'):
-            if line.strip().upper().startswith('SUBJECT:'):
-                subject = line.split(':', 1)[1].strip()
-                message = text[:text.rfind(line)].strip()
-                break
-        return jsonify({'message': message, 'subject': subject})
+            matched = False
+            for key in fields:
+                if line.strip().upper().startswith(key + ':'):
+                    fields[key] = line.split(':', 1)[1].strip()
+                    matched = True
+                    break
+            if not matched:
+                keep_lines.append(line)
+        message = '\n'.join(keep_lines).strip()
+        return jsonify({
+            'message': message,
+            'subject': fields['SUBJECT'],
+            'composition': fields['COMPOSITION'],
+            'details': fields['DETAILS'],
+        })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -86,14 +101,23 @@ def generate_prompt():
     subject = data.get('subject', '')
     style = data.get('style', '')
     mode = data.get('mode', 'reimagine')
+    composition = data.get('composition', '')
+    details = data.get('details', '')
+
+    framing = f'Composition: {composition}. ' if composition else ''
+    detail_note = f'The child drew: {details} ' if details else ''
 
     if mode == 'faithful':
         prompt = (f'Write a 1-sentence image generation prompt that faithfully '
-                  f'recreates a child\'s drawing of: {subject}. '
+                  f'recreates a child\'s drawing of: {subject}. {detail_note}'
+                  f'{framing}IMPORTANT: preserve the original framing/composition. '
                   f'Keep it simple and childlike. Output ONLY the prompt, nothing else.')
     else:
         prompt = (f'Write a vivid 2-3 sentence image generation prompt that brings '
                   f'"{subject}" to life as magical, beautiful artwork a child would love. '
+                  f'{detail_note}{framing}'
+                  f'IMPORTANT: preserve the framing the child drew (if they drew a '
+                  f'full figure, generate a full body shot; if a wide scene, keep it wide). '
                   f'{("Style: " + style + ". ") if style else ""}'
                   f'Output ONLY the prompt, nothing else.')
     try:
