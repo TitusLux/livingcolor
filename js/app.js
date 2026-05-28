@@ -7,6 +7,7 @@ import { setupGenerate } from './generate.js';
 import { setupApiKey } from './setup.js';
 import { initChatUI } from './chat.js';
 import { initChatInput } from './chat-flow.js';
+import { downloadLog, log } from './logger.js';
 
 function init() {
   const canvas = document.getElementById('drawing-canvas');
@@ -26,6 +27,9 @@ function init() {
   setupSuggestions();
   initChatUI();
   initChatInput();
+
+  document.getElementById('download-log-btn')?.addEventListener('click', downloadLog);
+  log('init', 'app initialized');
 
   saveState();
 }

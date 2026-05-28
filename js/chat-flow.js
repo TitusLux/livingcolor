@@ -8,6 +8,7 @@ import {
   appendMessage, removeLoading, showButtons, showEmojiGrid,
   showTextInput, hideButtons, setButtonHandler, hidePlaceholder,
 } from './chat.js';
+import { log } from './logger.js';
 
 const EMOJI_ITEMS = [
   { emoji: '🦋', label: 'butterfly' }, { emoji: '🐱', label: 'cat' },
@@ -20,8 +21,9 @@ const EMOJI_ITEMS = [
   { emoji: '🎂', label: 'cake' },       { emoji: '🚀', label: 'rocket' },
 ];
 
-// Log step status — appears as faint system messages in chat
+// Log step status — appears as faint system messages in chat + persistent log
 function logStep(msg) {
+  log('flow', msg);
   appendMessage({ role: 'system', type: 'text', content: msg });
 }
 
@@ -144,7 +146,9 @@ async function generateImage(subject, styleHint) {
 
 // Main entry point: start the conversational flow
 export async function startChatFlow() {
+  log('user', 'clicked Bring to Life');
   if (isCanvasBlank()) {
+    log('flow', 'canvas blank, prompting user');
     appendMessage({ role: 'ai', type: 'text', content: 'Draw something first, then show me! I can\'t wait to see!' });
     return;
   }
@@ -158,6 +162,7 @@ export async function startChatFlow() {
 
   try {
     const { message, subject } = await recognizeDrawing();
+    log('ai', 'recognition success', { subject, message: message.slice(0, 100) });
     removeLoading();
     setChatSubject(subject);
     appendMessage({ role: 'ai', type: 'text', content: message });
@@ -271,28 +276,38 @@ let activeAbortController = null;
 export function initChatInput() {
   const input = document.getElementById('chat-input');
   const sendBtn = document.getElementById('chat-send-btn');
-  if (!input || !sendBtn) return;
+  if (!input || !sendBtn) {
+    log('init', 'chat input elements missing', { input: !!input, sendBtn: !!sendBtn });
+    return;
+  }
+  log('init', 'chat input wired up');
+
+  // Show the input row always so user can interact anytime
+  const row = document.getElementById('chat-input-row');
+  if (row) row.style.display = 'flex';
 
   function send() {
     const text = input.value.trim();
-    if (!text) return;
+    if (!text) { log('user', 'empty send ignored'); return; }
+    log('user', 'sent message', { text });
     input.value = '';
     appendMessage({ role: 'user', type: 'text', content: text });
     handleFreeFormMessage(text);
   }
 
-  sendBtn.addEventListener('click', send);
+  sendBtn.addEventListener('click', () => { log('user', 'clicked send button'); send(); });
   input.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); send(); }
+    if (e.key === 'Enter') { e.preventDefault(); log('user', 'pressed Enter'); send(); }
     if (e.key === 'Escape') {
       e.preventDefault();
+      log('user', 'pressed Escape in input');
       abortCurrentWork();
     }
   });
 
-  // Global ESC to abort
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && document.activeElement !== input) {
+      log('user', 'pressed Escape (global)');
       abortCurrentWork();
     }
   });
@@ -309,24 +324,33 @@ function abortCurrentWork() {
 }
 
 async function handleFreeFormMessage(text) {
-  // Show input row if not already
+  log('flow', 'handleFreeFormMessage', { text });
   document.getElementById('chat-input-row').style.display = 'flex';
 
   const lower = text.toLowerCase();
   if (lower.includes('draw') && (lower.includes('again') || lower.includes('new'))) {
+    log('flow', 'matched draw-again');
     appendMessage({ role: 'ai', type: 'text', content: 'Clear the canvas and draw something new! Then click Bring to Life! ✨' });
     return;
   }
   if (lower.includes('stop') || lower.includes('cancel')) {
+    log('flow', 'matched stop/cancel');
     abortCurrentWork();
     return;
   }
 
-  // Otherwise, send to AI for conversational response
   appendMessage({ role: 'ai', type: 'loading', content: '' });
-  const reply = await chatWithAI(text);
-  removeLoading();
-  appendMessage({ role: 'ai', type: 'text', content: reply });
+  log('flow', 'calling chatWithAI');
+  try {
+    const reply = await chatWithAI(text);
+    log('ai', 'chat reply', { reply: reply.slice(0, 100) });
+    removeLoading();
+    appendMessage({ role: 'ai', type: 'text', content: reply });
+  } catch (e) {
+    log('error', 'chatWithAI failed', { error: e.message });
+    removeLoading();
+    appendMessage({ role: 'ai', type: 'text', content: 'Sorry, I had trouble responding. Try again?' });
+  }
 }
 
 async function chatWithAI(message) {
