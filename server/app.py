@@ -235,6 +235,64 @@ REGION_PROMPT_TEMPLATE = (
 )
 
 
+STORY_PROMPT = (
+    'You are an inventive children\'s storyteller. A child drew a {subject}. '
+    '{character_note}{detail_note}\n\n'
+    'Write a SHORT, MAGICAL story arc (4 scenes only — exactly 4) that brings this drawing to life. '
+    'It should feel ALIVE — with progression, surprise, character. Not just an object floating. '
+    'Examples of arcs that work:\n'
+    '  - close-up smiling face → revealed as tiny astronaut → climbs into rocket → blasts into stars → waves goodbye\n'
+    '  - single butterfly → discovers a hidden flower → friends join → they dance in golden light → sun sets behind them\n'
+    '  - cat at window → spots something magical outside → leaps through a portal → soars over a galaxy → curls up safely home\n'
+    '  - dragon perched on rock → exhales a tiny puff of glitter that becomes a bird → bird leads it to treasure → dragon laughs\n\n'
+    'Each scene should advance the story. Use camera moves (close-up → wide → above), '
+    'introduce new elements, change settings. Keep the original character recognizable across scenes.\n\n'
+    'For each scene write:\n'
+    '- image_prompt: vivid 1-2 sentence image description (highly detailed, vivid colors, '
+    'masterpiece quality). Always include the central character\'s look so it stays consistent.\n'
+    '- narration: 1 short kid-friendly sentence to be read aloud (8-15 words, excited, warm)\n'
+    '- hold_ms: how long this scene should display (3000-5000ms)\n\n'
+    'Output ONLY a JSON object: {{"title": "Short title", "scenes": [{{"image_prompt": "...", "narration": "...", "hold_ms": 4000}}, ...]}}\n'
+    'No markdown, no commentary.'
+)
+
+
+@app.route('/api/story', methods=['POST'])
+def story():
+    """Ask Claude to write a multi-scene narrative arc for the drawing."""
+    data = request.json
+    subject = data.get('subject', 'creature')
+    character = data.get('character', '')
+    details = data.get('details', '')
+    style = data.get('style', '')
+
+    char_note = f'Distinctive features: {character}. ' if character else ''
+    detail_note = f'Details from the drawing: {details}. ' if details else ''
+
+    prompt = STORY_PROMPT.format(
+        subject=subject,
+        character_note=char_note,
+        detail_note=detail_note,
+    )
+    if style:
+        prompt += f'\nStyle hint: {style}'
+
+    try:
+        text = claude(prompt)
+        text = text.strip()
+        if text.startswith('```'):
+            text = text.split('\n', 1)[1] if '\n' in text else text
+            if text.endswith('```'):
+                text = text.rsplit('\n', 1)[0]
+            text = text.strip()
+        plan = json.loads(text)
+        return jsonify(plan)
+    except json.JSONDecodeError as e:
+        return jsonify({'error': f'invalid JSON: {e}', 'raw': text[:500]}), 500
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/region-motion', methods=['POST'])
 def region_motion():
     """Ask Claude to segment the AI image into animatable regions + motion vectors."""
@@ -365,6 +423,50 @@ def archive():
     saved.append('meta.json')
 
     return jsonify({'saved': saved, 'path': str(session_dir)})
+
+
+@app.route('/api/archive-story', methods=['POST'])
+def archive_story():
+    """Save a generated story arc to the current session's archive folder."""
+    data = request.json
+    subject = (data.get('subject', 'untitled') or 'untitled').replace('/', '_').replace(' ', '_')
+    title = data.get('title', 'Story')
+    scenes = data.get('scenes', [])
+    if not scenes:
+        return jsonify({'error': 'no scenes'}), 400
+
+    # Find or create the latest session dir for this subject (or make a new one)
+    base = archive_dir()
+    ts = datetime.now().strftime('%Y%m%d-%H%M%S-%f')[:-3]
+    story_dir = base / f'{ts}-story-{subject}'
+    story_dir.mkdir(parents=True, exist_ok=True)
+
+    saved = []
+    for i, scene in enumerate(scenes):
+        url = scene.get('image_url')
+        if not url:
+            continue
+        path = story_dir / f'scene_{i+1:02d}.jpg'
+        try:
+            req = urllib.request.Request(url, headers={'User-Agent': 'curl/8'})
+            with urllib.request.urlopen(req, timeout=60) as r:
+                path.write_bytes(r.read())
+            saved.append(path.name)
+        except Exception as e:
+            saved.append(f'scene_{i+1:02d}_failed: {e}')
+
+    (story_dir / 'story.json').write_text(json.dumps({
+        'title': title,
+        'subject': subject,
+        'scenes': [{
+            'narration': s.get('narration', ''),
+            'image_prompt': s.get('image_prompt', ''),
+            'hold_ms': s.get('hold_ms', 4000),
+        } for s in scenes],
+    }, indent=2))
+    saved.append('story.json')
+
+    return jsonify({'saved': saved, 'path': str(story_dir), 'title': title})
 
 
 @app.route('/api/archive/config', methods=['GET', 'POST'])

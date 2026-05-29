@@ -11,6 +11,7 @@ import {
 import { log } from './logger.js';
 import { makeAlive, stopLiving } from './living.js';
 import { animateRegions, stopRegionAnimation } from './regions.js';
+import { playStory, stopStory } from './story.js';
 
 const EMOJI_ITEMS = [
   { emoji: '🦋', label: 'butterfly' }, { emoji: '🐱', label: 'cat' },
@@ -232,6 +233,7 @@ async function startGeneration(subject) {
   hideButtons();
   stopLiving();
   stopRegionAnimation();
+  stopStory();
   appendMessage({ role: 'ai', type: 'loading', content: 'I\'m painting your ' + subject + '... 🎨' });
 
   const styleHint = document.getElementById('style-prompt').value.trim();
@@ -328,17 +330,28 @@ async function applyLivingToLastImage() {
   if (imgs.length === 0) return;
   const lastImg = imgs[imgs.length - 1];
   const useBackend = localStorage.getItem('use_backend') === 'true';
+  const subject = window._lcSubject || 'object';
+  const info = window._lcDrawingInfo || {};
 
-  // When backend is available, try per-region motion first (real animation)
+  // PRIMARY when backend on: narrative story arc (Claude writes 4-6 scenes,
+  // each becomes a Pollinations image with narration). Real progression.
+  if (useBackend) {
+    try {
+      logStep('Writing your story...');
+      const ok = await playStory(lastImg, subject, info);
+      if (ok) return;
+    } catch (e) {
+      log('story', 'fatal, falling back to regions', { error: e.message });
+    }
+  }
+
+  // FALLBACK 1: per-region motion (separate parts animate)
   if (useBackend && lastImg.src) {
     try {
       const res = await fetch('/api/region-motion', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          image_url: lastImg.src,
-          subject: window._lcSubject || 'object',
-        }),
+        body: JSON.stringify({ image_url: lastImg.src, subject }),
         signal: AbortSignal.timeout(60000),
       });
       if (res.ok) {
@@ -350,7 +363,7 @@ async function applyLivingToLastImage() {
         return;
       }
     } catch (e) {
-      log('regions', 'region-motion failed, falling back to whole-image plan', { error: e.message });
+      log('regions', 'region-motion failed', { error: e.message });
     }
   }
 
