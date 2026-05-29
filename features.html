@@ -114,6 +114,28 @@
   .status.limited { background: rgba(255, 204, 68, 0.15);  color: #ffcc44; }
   .status.planned { background: rgba(124, 92, 252, 0.15);  color: #9478ff; }
 
+  .dot {
+    display: inline-block;
+    width: 10px; height: 10px;
+    border-radius: 50%;
+  }
+  .dot.done    { background: #44cc88; }
+  .dot.progress { background: #ffb86b; }
+  .dot.limited { background: #ffcc44; }
+  .dot.planned { background: #9478ff; }
+
+  .status::before {
+    content: '';
+    display: inline-block;
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    margin-right: 4px;
+  }
+  .status.done::before    { background: #44cc88; }
+  .status.progress::before { background: #ffb86b; }
+  .status.limited::before { background: #ffcc44; }
+  .status.planned::before { background: #9478ff; }
+
   .notes { color: #8888a0; font-size: 0.85rem; }
 
   @media (max-width: 768px) {
@@ -130,10 +152,10 @@
   <p class="subtitle">Updated 2026-05-29</p>
 
   <div class="summary">
-    <div class="stat"><span class="stat-num done">36</span><span>Done ✅</span></div>
-    <div class="stat"><span class="stat-num limited">2</span><span>Works, quota-limited ⚠️</span></div>
-    <div class="stat"><span class="stat-num progress">4</span><span>In progress / blocked 🔄</span></div>
-    <div class="stat"><span class="stat-num planned">3</span><span>Planned 📝</span></div>
+    <div class="stat"><span class="dot done"></span><span class="stat-num done">36</span><span>Done</span></div>
+    <div class="stat"><span class="dot limited"></span><span class="stat-num limited">2</span><span>Quota-limited</span></div>
+    <div class="stat"><span class="dot progress"></span><span class="stat-num progress">4</span><span>In progress / blocked</span></div>
+    <div class="stat"><span class="dot planned"></span><span class="stat-num planned">3</span><span>Planned</span></div>
   </div>
 
   <div class="controls">
@@ -223,10 +245,10 @@ const FEATURES = [
 ];
 
 const STATUS_LABEL = {
-  done: '✅ Done',
-  progress: '🔄 In progress',
-  limited: '⚠️ Quota-limited',
-  planned: '📝 Planned',
+  done: 'Done',
+  progress: 'In progress',
+  limited: 'Quota-limited',
+  planned: 'Planned',
 };
 
 const tbody = document.querySelector('#features-table tbody');
