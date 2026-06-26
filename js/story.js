@@ -4,6 +4,7 @@
 import { POLLINATIONS_IMAGE } from './state.js';
 import { log } from './logger.js';
 import { speak, stopSpeaking } from './voice.js';
+import { backendFetch } from './backend.js';
 
 let activePlayback = null;
 
@@ -67,7 +68,7 @@ export async function playStory(imgEl, subject, info) {
   // Get the story from Claude
   let storyData;
   try {
-    const res = await fetch('/api/story', {
+    const res = await backendFetch('/api/story', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -100,7 +101,7 @@ export async function playStory(imgEl, subject, info) {
   const sceneUrls = storyData.scenes.map(s => buildPollinationsUrl(s.image_prompt, seed));
 
   // Archive the story
-  fetch('/api/archive-story', {
+  backendFetch('/api/archive-story', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({

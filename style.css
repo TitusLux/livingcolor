@@ -26,6 +26,7 @@ body {
 header {
   text-align: center;
   padding: 1.5rem 1rem 0.5rem;
+  flex-shrink: 0;
 }
 
 .header-row {
@@ -168,10 +169,13 @@ h1 {
 
 main {
   flex: 1;
+  min-height: 0;
   padding: 1rem;
   max-width: 1200px;
   width: 100%;
   margin: 0 auto;
+  display: flex;
+  flex-direction: column;
 }
 
 .workspace {
@@ -179,6 +183,8 @@ main {
   grid-template-columns: 1fr 1fr;
   gap: 1rem;
   margin-bottom: 1rem;
+  flex: 1;
+  min-height: 0;
 }
 
 .canvas-panel, .result-panel {
@@ -188,6 +194,7 @@ main {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  min-height: 0;
 }
 
 /* Toolbar */
@@ -322,7 +329,7 @@ main {
   align-items: center;
   justify-content: center;
   padding: 0;
-  min-height: 400px;
+  min-height: 0;
   background: #fff;
   cursor: crosshair;
 }
@@ -336,7 +343,6 @@ main {
 /* Result panel */
 .result-panel {
   position: relative;
-  min-height: 400px;
 }
 
 .result-placeholder {
@@ -435,6 +441,7 @@ main {
 /* Generate section */
 .generate-section {
   margin-bottom: 1rem;
+  flex-shrink: 0;
 }
 
 .prompt-row {
@@ -602,6 +609,7 @@ footer {
   padding: 1rem;
   color: var(--text-dim);
   font-size: 0.8rem;
+  flex-shrink: 0;
 }
 
 footer a { color: var(--accent); text-decoration: none; }
@@ -646,6 +654,7 @@ footer a:hover { text-decoration: underline; }
   line-height: 1.5;
   word-wrap: break-word;
   animation: bubblePop 0.25s ease-out;
+  flex-shrink: 0;
 }
 
 @keyframes bubblePop {
@@ -685,6 +694,7 @@ footer a:hover { text-decoration: underline; }
   padding: 0.5rem;
   border-top: 1px solid var(--border);
   background: var(--surface2);
+  flex-shrink: 0;
 }
 
 .chat-input-row input {
@@ -717,13 +727,23 @@ footer a:hover { text-decoration: underline; }
 .chat-send-btn:hover { background: var(--accent-hover); }
 
 .chat-image {
+  display: block;
   width: 100%;
+  max-width: 100%;
+  height: auto;
+  object-fit: contain;
+  flex-shrink: 0;
   border-radius: 12px;
   margin-bottom: 0.25rem;
 }
 
 .chat-video {
+  display: block;
   width: 100%;
+  max-width: 100%;
+  height: auto;
+  object-fit: contain;
+  flex-shrink: 0;
   border-radius: 12px;
   margin-bottom: 0.25rem;
 }
@@ -756,6 +776,7 @@ footer a:hover { text-decoration: underline; }
   padding: 0.75rem;
   border-top: 1px solid var(--border);
   background: var(--surface2);
+  flex-shrink: 0;
 }
 
 .chat-response-btn {
@@ -858,6 +879,28 @@ footer a:hover { text-decoration: underline; }
   user-select: none;
 }
 
+/* Desktop: lock the app to the viewport, only the chat history scrolls */
+@media (min-width: 769px) {
+  html, body {
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  /* Trim chrome so the canvas/chat panels get more of the viewport */
+  header { padding: 0.6rem 1rem 0.3rem; }
+  .tagline { margin-top: 0.1rem; }
+
+  main { padding: 0.5rem 1rem; }
+  .workspace { margin-bottom: 0.5rem; }
+
+  .generate-section { margin-bottom: 0.35rem; }
+  .mode-toggle { margin-top: 0.35rem; }
+  .suggestions { margin-top: 0.35rem; }
+  .status { margin-top: 0.2rem; min-height: 1em; font-size: 0.8rem; }
+
+  footer { padding: 0.35rem 1rem; font-size: 0.75rem; }
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   body { padding: 0; }
@@ -870,8 +913,7 @@ footer a:hover { text-decoration: underline; }
     grid-template-columns: 1fr;
     gap: 0.5rem;
   }
-  .canvas-container { min-height: 280px; }
-  .result-panel { min-height: 280px; }
+  .canvas-panel, .result-panel { height: 360px; }
 
   /* Bigger touch targets */
   .tool-btn, .settings-btn { width: 44px; height: 44px; }

@@ -2,6 +2,7 @@
 
 import { GEMINI_URL, POLLINATIONS_IMAGE, setChatSubject, setLastGeneratedPrompt } from './state.js';
 import { getApiKey, showSetup } from './setup.js';
+import { isBackendEnabled, backendFetch } from './backend.js';
 import { isCanvasBlank, getCanvasBase64 } from './canvas.js';
 import { startVeoGeneration, resetVideoUI } from './video.js';
 import {
@@ -35,12 +36,12 @@ async function recognizeDrawing() {
   const b64 = getCanvasBase64();
   const prompt = 'You are a warm, playful AI friend talking to a young child (age 2-5) who just drew a picture. React with excitement in 1-2 short sentences. Use 1-2 emojis. Ask if you guessed right.\n\nThen on separate lines at the end, write:\nSUBJECT: <1-3 words naming what they drew>\nCOMPOSITION: <one short phrase: "full figure", "headshot", "wide scene", "close-up", "object on background", etc>\nDETAILS: <a sentence describing what they actually drew: body parts visible, action/pose, colors, positions>\nCHARACTER: <2-3 sentences capturing the drawing\'s distinctive quirks — proportions (e.g. "oblong head", "long thin arms", "tiny legs"), shapes (round/oval/square), expression/mood, posture, any unusual or charming details. These are the things that make THIS drawing unique, not just any drawing of a {subject}. Be specific and faithful to what you actually see.>';
 
-  const useBackend = localStorage.getItem('use_backend') === 'true';
+  const useBackend = isBackendEnabled();
 
   if (useBackend) {
     logStep('Trying Claude Code (local)…');
     try {
-      const res = await fetch('/api/recognize', {
+      const res = await backendFetch('/api/recognize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ image: b64 }),
@@ -127,12 +128,12 @@ function parseSubjectResponse(text) {
 // Step 2: Generate image prompt + Pollinations URL
 async function generateImage(subject, styleHint, composition, details, character) {
   const mode = document.getElementById('animation-mode')?.checked ? 'faithful' : 'reimagine';
-  const useBackend = localStorage.getItem('use_backend') === 'true';
+  const useBackend = isBackendEnabled();
   let prompt;
 
   if (useBackend) {
     try {
-      const res = await fetch('/api/generate-prompt', {
+      const res = await backendFetch('/api/generate-prompt', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ subject, style: styleHint, mode, composition, details, character })
@@ -297,13 +298,12 @@ async function startVideoForChat(prompt, subject) {
 }
 
 async function archiveDrawing(subject, aiImageUrl, prompt) {
-  // Only when local backend is enabled
-  if (localStorage.getItem('use_backend') !== 'true') return;
+  if (!isBackendEnabled()) return;
   try {
     const info = window._lcDrawingInfo || {};
     const styleHint = document.getElementById('style-prompt')?.value.trim() || '';
     const mode = document.getElementById('animation-mode')?.checked ? 'faithful' : 'reimagine';
-    const res = await fetch('/api/archive', {
+    const res = await backendFetch('/api/archive', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -329,7 +329,7 @@ async function applyLivingToLastImage() {
   const imgs = document.querySelectorAll('.chat-bubble img');
   if (imgs.length === 0) return;
   const lastImg = imgs[imgs.length - 1];
-  const useBackend = localStorage.getItem('use_backend') === 'true';
+  const useBackend = isBackendEnabled();
   const subject = window._lcSubject || 'object';
   const info = window._lcDrawingInfo || {};
 
@@ -348,7 +348,7 @@ async function applyLivingToLastImage() {
   // FALLBACK 1: per-region motion (separate parts animate)
   if (useBackend && lastImg.src) {
     try {
-      const res = await fetch('/api/region-motion', {
+      const res = await backendFetch('/api/region-motion', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ image_url: lastImg.src, subject }),
@@ -372,7 +372,7 @@ async function applyLivingToLastImage() {
   if (useBackend) {
     try {
       const info = window._lcDrawingInfo || {};
-      const res = await fetch('/api/motion-plan', {
+      const res = await backendFetch('/api/motion-plan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

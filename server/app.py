@@ -9,9 +9,11 @@ import urllib.request
 from datetime import datetime
 from pathlib import Path
 from flask import Flask, request, jsonify, send_from_directory
+from flask_cors import CORS
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 app = Flask(__name__, static_folder=STATIC_DIR, static_url_path='')
+CORS(app)
 
 CLAUDE_CMD = os.environ.get('CLAUDE_CMD', 'claude')
 ELEVENLABS_KEY = os.environ.get('ELEVENLABS_API_KEY', 'sk_adb35ecedf556cdc84feed2b7ecedcaf70d6c108e9d7cccb')

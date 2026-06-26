@@ -3,6 +3,7 @@
 // User can toggle off via localStorage('voice_off').
 
 import { log } from './logger.js';
+import { isBackendEnabled, backendFetch } from './backend.js';
 
 let currentAudio = null;
 
@@ -34,14 +35,14 @@ function stripForSpeech(text) {
 }
 
 export async function speak(text) {
-  if (!isVoiceEnabled()) return;
+  if (!isVoiceEnabled() || !isBackendEnabled()) return;
   const clean = stripForSpeech(text);
   if (clean.length < 2) return;
 
   stopSpeaking();
 
   try {
-    const res = await fetch('/api/speak', {
+    const res = await backendFetch('/api/speak', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text: clean }),
