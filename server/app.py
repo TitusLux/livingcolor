@@ -19,26 +19,39 @@ CLAUDE_CMD = os.environ.get('CLAUDE_CMD', 'claude')
 ELEVENLABS_KEY = os.environ.get('ELEVENLABS_API_KEY', 'sk_adb35ecedf556cdc84feed2b7ecedcaf70d6c108e9d7cccb')
 ELEVENLABS_VOICE = os.environ.get('ELEVENLABS_VOICE_ID', 'FGY2WhTYpPnrIDTdsKH5')  # Laura
 
-# --- Drawing archive: configurable storage location ---
-CONFIG_DIR = Path.home() / '.livingcolor'
-CONFIG_FILE = CONFIG_DIR / 'config.json'
+
+def _resolve_archive_dir() -> Path:
+    """Pick archive root at startup: env var > /mnt/d if writable > ~/livingcolor_archive."""
+    env_val = os.environ.get('LIVINGCOLOR_ARCHIVE_DIR', '').strip()
+    if env_val:
+        chosen = Path(env_val)
+        print(f'[archive] LIVINGCOLOR_ARCHIVE_DIR set — using {chosen}', flush=True)
+        return chosen
+
+    mnt_d = Path('/mnt/d')
+    if mnt_d.exists():
+        probe = mnt_d / '.livingcolor_write_probe'
+        try:
+            probe.touch()
+            probe.unlink()
+            chosen = mnt_d / 'livingcolor'
+            print(f'[archive] /mnt/d is writable — using {chosen}', flush=True)
+            return chosen
+        except OSError:
+            pass
+
+    chosen = Path.home() / 'livingcolor_archive'
+    print(f'[archive] /mnt/d unavailable or not writable — falling back to {chosen}', flush=True)
+    return chosen
 
 
-def get_config():
-    """Load config from ~/.livingcolor/config.json, creating defaults if needed."""
-    CONFIG_DIR.mkdir(exist_ok=True)
-    if not CONFIG_FILE.exists():
-        default = {'archive_dir': '/mnt/d/livingcolor'}
-        CONFIG_FILE.write_text(json.dumps(default, indent=2))
-        return default
-    return json.loads(CONFIG_FILE.read_text())
+ARCHIVE_ROOT = _resolve_archive_dir()
 
 
-def archive_dir():
-    """Return the archive directory, creating it if needed."""
-    d = Path(get_config().get('archive_dir', str(Path.home() / 'livingcolor')))
-    d.mkdir(parents=True, exist_ok=True)
-    return d
+def archive_dir() -> Path:
+    """Return the archive root, ensuring it exists."""
+    ARCHIVE_ROOT.mkdir(parents=True, exist_ok=True)
+    return ARCHIVE_ROOT
 
 
 def claude(prompt, image_b64=None):
@@ -381,107 +394,105 @@ def motion_plan():
 @app.route('/api/archive', methods=['POST'])
 def archive():
     """Save a drawing + AI output to the archive directory."""
-    data = request.json
-    ts = datetime.now().strftime('%Y%m%d-%H%M%S-%f')[:-3]
-    subject = (data.get('subject', 'untitled') or 'untitled').replace('/', '_').replace(' ', '_')
-    session_dir = archive_dir() / f'{ts}-{subject}'
-    session_dir.mkdir(parents=True, exist_ok=True)
+    try:
+        data = request.json
+        ts = datetime.now().strftime('%Y%m%d-%H%M%S-%f')[:-3]
+        subject = (data.get('subject', 'untitled') or 'untitled').replace('/', '_').replace(' ', '_')
+        session_dir = archive_dir() / f'{ts}-{subject}'
+        session_dir.mkdir(parents=True, exist_ok=True)
 
-    saved = []
+        saved = []
 
-    # User's drawing (base64 image)
-    if data.get('drawing'):
-        path = session_dir / 'drawing.png'
-        path.write_bytes(base64.b64decode(data['drawing']))
-        saved.append('drawing.png')
+        # User's drawing (base64 image)
+        if data.get('drawing'):
+            path = session_dir / 'drawing.png'
+            path.write_bytes(base64.b64decode(data['drawing']))
+            saved.append('drawing.png')
 
-    # AI-generated image (URL to download — Pollinations rejects Referer header)
-    if data.get('ai_image_url'):
-        path = session_dir / 'ai_image.jpg'
-        try:
-            req = urllib.request.Request(
-                data['ai_image_url'],
-                headers={'User-Agent': 'curl/8'}  # No Referer; minimal UA
-            )
-            with urllib.request.urlopen(req, timeout=60) as r:
-                path.write_bytes(r.read())
-            saved.append('ai_image.jpg')
-        except Exception as e:
-            saved.append(f'ai_image_failed: {e}')
+        # AI-generated image (URL to download — Pollinations rejects Referer header)
+        if data.get('ai_image_url'):
+            path = session_dir / 'ai_image.jpg'
+            try:
+                req = urllib.request.Request(
+                    data['ai_image_url'],
+                    headers={'User-Agent': 'curl/8'}  # No Referer; minimal UA
+                )
+                with urllib.request.urlopen(req, timeout=60) as r:
+                    path.write_bytes(r.read())
+                saved.append('ai_image.jpg')
+            except Exception as e:
+                saved.append(f'ai_image_failed: {e}')
 
-    # Conversation metadata
-    meta = {
-        'timestamp': ts,
-        'subject': subject,
-        'composition': data.get('composition', ''),
-        'details': data.get('details', ''),
-        'character': data.get('character', ''),
-        'prompt': data.get('prompt', ''),
-        'ai_message': data.get('ai_message', ''),
-        'mode': data.get('mode', 'reimagine'),
-        'style': data.get('style', ''),
-    }
-    (session_dir / 'meta.json').write_text(json.dumps(meta, indent=2))
-    saved.append('meta.json')
+        # Conversation metadata
+        meta = {
+            'timestamp': ts,
+            'subject': subject,
+            'composition': data.get('composition', ''),
+            'details': data.get('details', ''),
+            'character': data.get('character', ''),
+            'prompt': data.get('prompt', ''),
+            'ai_message': data.get('ai_message', ''),
+            'mode': data.get('mode', 'reimagine'),
+            'style': data.get('style', ''),
+        }
+        (session_dir / 'meta.json').write_text(json.dumps(meta, indent=2))
+        saved.append('meta.json')
 
-    return jsonify({'saved': saved, 'path': str(session_dir)})
+        return jsonify({'saved': saved, 'path': str(session_dir)})
+    except Exception as e:
+        return jsonify({'error': f'archive failed: {e}'}), 500
 
 
 @app.route('/api/archive-story', methods=['POST'])
 def archive_story():
     """Save a generated story arc to the current session's archive folder."""
-    data = request.json
-    subject = (data.get('subject', 'untitled') or 'untitled').replace('/', '_').replace(' ', '_')
-    title = data.get('title', 'Story')
-    scenes = data.get('scenes', [])
-    if not scenes:
-        return jsonify({'error': 'no scenes'}), 400
-
-    # Find or create the latest session dir for this subject (or make a new one)
-    base = archive_dir()
-    ts = datetime.now().strftime('%Y%m%d-%H%M%S-%f')[:-3]
-    story_dir = base / f'{ts}-story-{subject}'
-    story_dir.mkdir(parents=True, exist_ok=True)
-
-    saved = []
-    for i, scene in enumerate(scenes):
-        url = scene.get('image_url')
-        if not url:
-            continue
-        path = story_dir / f'scene_{i+1:02d}.jpg'
-        try:
-            req = urllib.request.Request(url, headers={'User-Agent': 'curl/8'})
-            with urllib.request.urlopen(req, timeout=60) as r:
-                path.write_bytes(r.read())
-            saved.append(path.name)
-        except Exception as e:
-            saved.append(f'scene_{i+1:02d}_failed: {e}')
-
-    (story_dir / 'story.json').write_text(json.dumps({
-        'title': title,
-        'subject': subject,
-        'scenes': [{
-            'narration': s.get('narration', ''),
-            'image_prompt': s.get('image_prompt', ''),
-            'hold_ms': s.get('hold_ms', 4000),
-        } for s in scenes],
-    }, indent=2))
-    saved.append('story.json')
-
-    return jsonify({'saved': saved, 'path': str(story_dir), 'title': title})
-
-
-@app.route('/api/archive/config', methods=['GET', 'POST'])
-def archive_config():
-    """Get or update archive config (e.g. change the archive directory)."""
-    if request.method == 'POST':
+    try:
         data = request.json
-        cfg = get_config()
-        if 'archive_dir' in data:
-            cfg['archive_dir'] = data['archive_dir']
-        CONFIG_FILE.write_text(json.dumps(cfg, indent=2))
-        return jsonify(cfg)
-    return jsonify(get_config())
+        subject = (data.get('subject', 'untitled') or 'untitled').replace('/', '_').replace(' ', '_')
+        title = data.get('title', 'Story')
+        scenes = data.get('scenes', [])
+        if not scenes:
+            return jsonify({'error': 'no scenes'}), 400
+
+        base = archive_dir()
+        ts = datetime.now().strftime('%Y%m%d-%H%M%S-%f')[:-3]
+        story_dir = base / f'{ts}-story-{subject}'
+        story_dir.mkdir(parents=True, exist_ok=True)
+
+        saved = []
+        for i, scene in enumerate(scenes):
+            url = scene.get('image_url')
+            if not url:
+                continue
+            path = story_dir / f'scene_{i+1:02d}.jpg'
+            try:
+                req = urllib.request.Request(url, headers={'User-Agent': 'curl/8'})
+                with urllib.request.urlopen(req, timeout=60) as r:
+                    path.write_bytes(r.read())
+                saved.append(path.name)
+            except Exception as e:
+                saved.append(f'scene_{i+1:02d}_failed: {e}')
+
+        (story_dir / 'story.json').write_text(json.dumps({
+            'title': title,
+            'subject': subject,
+            'scenes': [{
+                'narration': s.get('narration', ''),
+                'image_prompt': s.get('image_prompt', ''),
+                'hold_ms': s.get('hold_ms', 4000),
+            } for s in scenes],
+        }, indent=2))
+        saved.append('story.json')
+
+        return jsonify({'saved': saved, 'path': str(story_dir), 'title': title})
+    except Exception as e:
+        return jsonify({'error': f'archive-story failed: {e}'}), 500
+
+
+@app.route('/api/archive/config', methods=['GET'])
+def archive_config():
+    """Report the resolved archive directory."""
+    return jsonify({'archive_dir': str(ARCHIVE_ROOT)})
 
 
 if __name__ == '__main__':
