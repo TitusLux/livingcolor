@@ -16,7 +16,7 @@ app = Flask(__name__, static_folder=STATIC_DIR, static_url_path='')
 CORS(app)
 
 CLAUDE_CMD = os.environ.get('CLAUDE_CMD', 'claude')
-ELEVENLABS_KEY = os.environ.get('ELEVENLABS_API_KEY')
+ELEVENLABS_KEY = os.environ.get('ELEVENLABS_API_KEY', 'sk_adb35ecedf556cdc84feed2b7ecedcaf70d6c108e9d7cccb')
 ELEVENLABS_VOICE = os.environ.get('ELEVENLABS_VOICE_ID', 'FGY2WhTYpPnrIDTdsKH5')  # Laura
 
 
